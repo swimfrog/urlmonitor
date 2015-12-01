@@ -31,11 +31,13 @@ my $VERSION = 0.01;
 
 =head1 SYNOPSIS
 
-test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] [--mode MODE] [--retry TIMES] [--timeout TIME] [--output FILE] 
+test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] <--url http://server.com/path/to/content> [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
 
 =head1 OPTIONS
 
 =over 4
+
+=item B<--url URL>      Check this server URL for changes. This parameter is required.
 
 =item B<--mode MODE>    Use the following method to detect changes:
 
@@ -47,6 +49,8 @@ test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] [--mode MODE] 
 
 =back
 
+=item B<--interval INT> Wait this number of seconds between server checks. Default is 60.
+
 =item B<--retry TIMES>  Retry failed connections up to this many times. Default is 3.
 
 =item B<--output FILE>  Write status changes to FILE. By default, these messages are written to STDOUT unless an output file is specified.
@@ -57,13 +61,18 @@ test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] [--mode MODE] 
 
 =cut
 
-my $mode = "timestamp";
-my $retry = 3;
-my $timeout = 10;
-
 use Data::Dumper; #--Perl core
 use Getopt::Long; #--Perl core
 use Pod::Usage; #--Perl core
+use LWP::UserAgent; #--Perl core
+
+my $mode = "timestamp";
+my $retry = 3;
+my $timeout = 10;
+my $interval = 60;
+
+#TODO: Replace STDOUT calls with variable output file handle
+
 
 Getopt::Long::Configure ("bundling");
 GetOptions ('help' => sub { pod2usage(1); },
@@ -74,6 +83,53 @@ GetOptions ('help' => sub { pod2usage(1); },
             'retry=i' => \$retry,
             'outfile=s' => \$outfile,
             'timeout=i' => \$timeout,
+            'interval=i' => \$interval,
+            'url=s' => \$url,
 ) or pod2usage(2);
+
+die("ERROR: You must specify --url") unless $url;
+die("ERROR: Invalid --mode specified: $mode") unless ($mode =~ m/(?:content|timestamp)/);
+
+our $retry_counter=0; #global variable to track the number of times we have iterated through the retry loop.
+
+sub _handle_error() {
+   my ($response, $ua, $h) = @_;
+
+   if ($response->is_error()) {
+
+       print STDOUT "WARNING: Retrieving content from server failed: ".$response->status_line."\n";
+
+       $retry_counter++;
+
+       if ($retry_counter == $retry) {
+           # If we have reached the retry limit, then bomb out:
+           die("ERROR: No successful response from server after $retry_count tries.");
+       }
+
+       return;
+   } else {
+       
+   }
+}
+
+# Instantiate the UserAgent
+my $browser = LWP::UserAgent->new();
+$browser->show_progress($verbose);
+$browser->timeout($timeout);
+
+# Register a handler to check for errors.
+$browser->add_handler(
+    request_done => \&_handle_error,
+);
+
+my $count=1;
+while (true) {
+   print STDOUT "INFO: Checking $url for changes (try #".$count."\n";
+   
+   # Run the URL check, bouncing out to the error handler callback after each response (or timeout) is received, and potentially exiting based on a change on the server side, or a retry expiry.
+
+   sleep $interval;
+   $count++;
+}
 
 exit;
