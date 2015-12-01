@@ -72,7 +72,8 @@ my $timeout = 10;
 my $interval = 60;
 
 #TODO: Replace STDOUT calls with variable output file handle
-
+#TODO: Add handling for connecting to SSL server
+#TODO: Add override for disabling following 302 redirects. LWP::UserAgent's default is to follow up to 7 hops.
 
 Getopt::Long::Configure ("bundling");
 GetOptions ('help' => sub { pod2usage(1); },
@@ -92,7 +93,7 @@ die("ERROR: Invalid --mode specified: $mode") unless ($mode =~ m/(?:content|time
 
 our $retry_counter=0; #global variable to track the number of times we have iterated through the retry loop.
 
-sub _handle_error() {
+sub _handle_error {
    my ($response, $ua, $h) = @_;
 
    if ($response->is_error()) {
@@ -103,12 +104,14 @@ sub _handle_error() {
 
        if ($retry_counter == $retry) {
            # If we have reached the retry limit, then bomb out:
-           die("ERROR: No successful response from server after $retry_count tries.");
+           die("ERROR: No successful response from server after $retry_counter tries.");
        }
 
        return;
    } else {
-       
+       print STDOUT "DEBUG: Response is OK!\n";
+
+       $retry_counter=0; #Reset the retry counter back to zero on success.
    }
 }
 
@@ -124,9 +127,16 @@ $browser->add_handler(
 
 my $count=1;
 while (true) {
-   print STDOUT "INFO: Checking $url for changes (try #".$count."\n";
+   print STDOUT "INFO: Checking $url for changes (try #".$count.")\n";
    
    # Run the URL check, bouncing out to the error handler callback after each response (or timeout) is received, and potentially exiting based on a change on the server side, or a retry expiry.
+
+   # Some testing code to make sure the retry logic is sound
+   if (int(rand(2))) { # Fail 50 percent of the time (random 0 or 1 evaluates to true or false)
+      _handle_error(HTTP::Response->new(500, "erhmagherd", ["test", "test"], "")); # Test for retrying on timeout/server fail
+   } else {
+      _handle_error(HTTP::Response->new(0, "ok", ["test", "test"], "")); # Test for emulating a success.
+   }
 
    sleep $interval;
    $count++;
