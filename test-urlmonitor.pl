@@ -155,7 +155,7 @@ while (true) {
       my $lm = $response->header("Last-Modified");
       die("ERROR: timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
       
-      print STDERR "INFO: established baseline timestamp as $lm\n" unless (($bucket) && ($verbose));
+      print STDERR "INFO: established baseline timestamp as $lm\n" if ((! $bucket) && ($verbose));
 
       if ($bucket ne $lm ) {
          die("WARNING: Server content has changed (was $bucket, now $lm)") if $bucket;
@@ -166,7 +166,7 @@ while (true) {
    } elsif ($mode eq "content") {
       $response = $browser->get($url);
 
-      print STDERR "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" unless (($bucket) && ($verbose));
+      print STDERR "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" if ((! $bucket) && ($verbose));
 
       if ($bucket ne $response->content ) {
          die("WARNING: Server content has changed (was ".md5_hex($bucket).", now ".md5_hex($response->content)) if $bucket;
