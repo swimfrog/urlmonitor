@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-test-urlmonitor.pl - Monitors an individual web page for changes
+urlmonitor.pl - Monitors an individual web page for changes
 
 =head1 VERSION
 
@@ -14,7 +14,7 @@ my $VERSION = 0.01;
 
 =head1 SYNOPSIS
 
-test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] <--url http://server.com/path/to/content> [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
+urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] <--url http://server.com/path/to/content> [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
 
 =head1 OPTIONS
 
