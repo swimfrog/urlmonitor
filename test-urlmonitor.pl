@@ -1,22 +1,5 @@
 #!/usr/bin/perl
 
-# Please use an interpreted language to complete the question below,
-# preferences in order of precedence are Python, Ruby and Perl.  A
-# reasonable and well documented answer could take a few hours to
-# produce.  Please stick to core language features (e.g. with the included
-# batteries for Pythonistas).
-#
-# You are responsible for monitoring a web property for changes, the first
-# proof of concept is a simple page monitor.  The requirements are:
-# 1) Log to a file the changed/unchanged state of the URL
-# http://www.oracle.com/index.html.
-# 2) Retry a configurable number of times in case of connection oriented
-# errors.
-# 3) Handle URL content change or unavailability as a program error with a
-# non-zero exit.
-# 4) Any other design decisions are up to the implementer.  Bonus for
-# solid design and extensibility.
-
 =head1 NAME
 
 test-urlmonitor.pl - Monitors an individual web page for changes
@@ -57,6 +40,8 @@ test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] <--url http://
 
 =item B<--timeout TIME> Wait this many seconds for a response from the server before retrying. Default is 10 seconds.
 
+=item B<--verbose|v>    -v - show INFO-level detail, -vv show DEBUG-level detail, -vvv shows TRACE-level detail (log of HTTP request/response). Default shows only warnings and fatal errors. This will also determine the level of detail logged to --outfile, if that option is specified.
+
 =back
 
 =cut
@@ -74,14 +59,6 @@ my $timeout = 10;
 my $interval = 60;
 our $verbose = 0;
 my $outfile = "/dev/stdout";
-
-# Bugs/Near-term improvements
-#TODO: Replace STDOUT calls with variable output file handle
-#TODO: Add handling for connecting to SSL server
-
-# Future improvements:
-#TODO: Add override for disabling following 302 redirects if the user doesn't want to follow redirects. LWP::UserAgent's default is to follow up to 7 hops.
-#TODO: Future logic for retrieving page assets and detecting changes on them -- Allow it to work with things like rotating banners by caching and comparing only with previously-seen assets, etc.
 
 Getopt::Long::Configure ("bundling");
 GetOptions ('help' => sub { pod2usage(1); },
@@ -105,7 +82,8 @@ our $retry_counter=0; #global variable to track the number of times we have iter
 open(my $outfh, '>>', $outfile) or die("ERROR: Could not open logfile $outfile: $!");
 
 sub _log {
-   # Crappy logging function to avoid having to using a non-core logging module for my simple use case.
+   # Crappy logging function to avoid having to use a non-core logging module for my simple use case. Adds a timestamp, and if the severity is "fatal", causes the program to die (exit with returncode 255)
+
    my $severity = shift @_;
    my $message = shift @_;
 
@@ -118,11 +96,13 @@ sub _log {
 }
 
 sub _handle_error {
+   # Subroutine that acts as a handler for LWP::UserAgent, implementing retry logic, outputting info-level detail when content is retrieved, and allowing the user to easily enable trace mode to see HTTP request/response data.
+
    my $response = shift @_;
 
    # Allow the user to see the request and response data, if verbosity is high
-   _log("debug", "HTTP Request: ".$response->request->as_string) if ($verbose > 2);
-   _log("debug", "HTTP Response: ".$response->as_string) if ($verbose > 2);
+   _log("trace", "HTTP Request: ".$response->request->as_string) if ($verbose > 2);
+   _log("trace", "HTTP Response: ".$response->as_string) if ($verbose > 2);
 
    if ($response->is_error()) {
        _log("warning", "Retrieving content from server failed: ".$response->status_line);
@@ -136,9 +116,11 @@ sub _handle_error {
 
        return;
    } else {
-       _log("info", "Content md5sum is ".md5_hex($response->content)) if $verbose;
+       unless($response->is_redirect) {
+          _log("info", "Content md5sum is ".md5_hex($response->content)) if $verbose;
 
-       $retry_counter=0; #Reset the retry counter back to zero on success.
+          $retry_counter=0; #Reset the retry counter back to zero on success.
+       }
    }
 }
 
@@ -169,28 +151,32 @@ while (true) {
    if ($mode eq "timestamp") {
       $response = $browser->head($url);
 
-      # Assuming there was no error, look for changes, then fill the bucket with the new content data and rinse/repeat.
-      my $lm = $response->header("Last-Modified");
-      _log("error", "timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
-      
-      _log("info", "established baseline timestamp as $lm") if ((! $bucket) && ($verbose));
-
-      if ($bucket ne $lm ) {
-         _log("fatal", "Server content has changed (was $bucket, now $lm)") if $bucket;
+      # As long as there was no error, look for changes, then fill the bucket with the new content data and rinse/repeat.
+      unless ($response->is_error()) {
+         my $lm = $response->header("Last-Modified");
+         _log("error", "timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
+         
+         _log("info", "established baseline timestamp as $lm") if ((! $bucket) && ($verbose));
+   
+         if ($bucket ne $lm ) {
+            _log("fatal", "Server content has changed (was $bucket, now $lm)") if $bucket;
+         }
+   
+         $bucket = $lm;
       }
-
-      $bucket = $lm;
 
    } elsif ($mode eq "content") {
       $response = $browser->get($url);
 
-      print $outfh "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" if ((! $bucket) && ($verbose));
-
-      if ($bucket ne $response->content ) {
-         _log("fatal", "Server content has changed (was ".md5_hex($bucket).", now ".md5_hex($response->content)) if $bucket;
+      unless ($response->is_error()) {
+         print $outfh "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" if ((! $bucket) && ($verbose));
+   
+         if ($bucket ne $response->content ) {
+            _log("fatal", "Server content has changed (was ".md5_hex($bucket).", now ".md5_hex($response->content)) if $bucket;
+         }
+   
+         $bucket = $response->content;
       }
-
-      $bucket = $response->content;
    }
 
    sleep $interval;
