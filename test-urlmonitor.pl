@@ -65,15 +65,21 @@ use Data::Dumper; #--Perl core
 use Getopt::Long; #--Perl core
 use Pod::Usage; #--Perl core
 use LWP::UserAgent; #--Perl core
+use Digest::MD5 qw (md5_hex); #--Perl core
 
 my $mode = "timestamp";
 my $retry = 3;
 my $timeout = 10;
 my $interval = 60;
+our $verbose = 0;
 
+# Bugs/Near-term improvements
 #TODO: Replace STDOUT calls with variable output file handle
 #TODO: Add handling for connecting to SSL server
-#TODO: Add override for disabling following 302 redirects. LWP::UserAgent's default is to follow up to 7 hops.
+
+# Future improvements:
+#TODO: Add override for disabling following 302 redirects if the user doesn't want to follow redirects. LWP::UserAgent's default is to follow up to 7 hops.
+#TODO: Future logic for retrieving page assets and detecting changes on them -- Allow it to work with things like rotating banners by caching and comparing only with previously-seen assets, etc.
 
 Getopt::Long::Configure ("bundling");
 GetOptions ('help' => sub { pod2usage(1); },
@@ -94,11 +100,14 @@ die("ERROR: Invalid --mode specified: $mode") unless ($mode =~ m/(?:content|time
 our $retry_counter=0; #global variable to track the number of times we have iterated through the retry loop.
 
 sub _handle_error {
-   my ($response, $ua, $h) = @_;
+   my $response = shift @_;
+
+   # Allow the user to see the request and response data, if verbosity is high
+   print STDERR "DEBUG: HTTP Request".Dumper($response->request->as_string) if ($verbose > 2);
+   print STDERR "DEBUG: HTTP Response".Dumper($response->as_string) if ($verbose > 2);
 
    if ($response->is_error()) {
-
-       print STDOUT "WARNING: Retrieving content from server failed: ".$response->status_line."\n";
+       print STDERR "WARNING: Retrieving content from server failed: ".$response->status_line."\n";
 
        $retry_counter++;
 
@@ -109,7 +118,7 @@ sub _handle_error {
 
        return;
    } else {
-       print STDOUT "DEBUG: Response is OK!\n";
+       print STDERR "INFO: Content md5sum is ".md5_hex($response->content)."\n" if $verbose;
 
        $retry_counter=0; #Reset the retry counter back to zero on success.
    }
@@ -117,25 +126,53 @@ sub _handle_error {
 
 # Instantiate the UserAgent
 my $browser = LWP::UserAgent->new();
-$browser->show_progress($verbose);
-$browser->timeout($timeout);
+$browser->show_progress($verbose); # If verbose, show information about the request process.
+$browser->timeout($timeout); # Pass in the timeout value from the arguments.
 
-# Register a handler to check for errors.
+# Register a handler to check for errors and implement retry logic.
 $browser->add_handler(
-    request_done => \&_handle_error,
+    response_done => \&_handle_error,
 );
 
+our $bucket=""; #Just some bits (used to store previously-seen values)
 my $count=1;
 while (true) {
-   print STDOUT "INFO: Checking $url for changes (try #".$count.")\n";
+   print STDOUT "INFO: Checking $url for changes (try #".$count.")\n" if $verbose;
    
-   # Run the URL check, bouncing out to the error handler callback after each response (or timeout) is received, and potentially exiting based on a change on the server side, or a retry expiry.
+   ## Some testing code to make sure the retry logic is sound
+   #if (int(rand(2))) { # Fail 50 percent of the time (random 0 or 1 evaluates to true or false)
+   #   #_handle_error(HTTP::Response->new(500, "erhmagherd", ["test", "test"], "")); # Test for retrying on timeout/server fail
+   #} else {
+   #   #_handle_error(HTTP::Response->new(0, "ok", ["test", "test"], "")); # Test for emulating a success.
+   #}
 
-   # Some testing code to make sure the retry logic is sound
-   if (int(rand(2))) { # Fail 50 percent of the time (random 0 or 1 evaluates to true or false)
-      _handle_error(HTTP::Response->new(500, "erhmagherd", ["test", "test"], "")); # Test for retrying on timeout/server fail
-   } else {
-      _handle_error(HTTP::Response->new(0, "ok", ["test", "test"], "")); # Test for emulating a success.
+   # Run the URL check, bouncing out to the error handler callback after each response (or timeout) is received, and potentially exiting based on a change on the server side, or a retry expiry.
+   my $response;
+   if ($mode eq "timestamp") {
+      $response = $browser->head($url);
+
+      # Assuming there was no error, look for changes, then fill the bucket with the new content data and rinse/repeat.
+      my $lm = $response->header("Last-Modified");
+      die("ERROR: timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
+      
+      print STDERR "INFO: established baseline timestamp as $lm\n" unless (($bucket) && ($verbose));
+
+      if ($bucket ne $lm ) {
+         die("WARNING: Server content has changed (was $bucket, now $lm)") if $bucket;
+      }
+
+      $bucket = $lm;
+
+   } elsif ($mode eq "content") {
+      $response = $browser->get($url);
+
+      print STDERR "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" unless (($bucket) && ($verbose));
+
+      if ($bucket ne $response->content ) {
+         die("WARNING: Server content has changed (was ".md5_hex($bucket).", now ".md5_hex($response->content)) if $bucket;
+      }
+
+      $bucket = $response->content;
    }
 
    sleep $interval;
