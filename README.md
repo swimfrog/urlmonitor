@@ -13,7 +13,7 @@ You are responsible for monitoring a web property for changes, the first proof o
 
 # Approach #
 
-I decided to use Perl for this, simply because that is what I could do most quickly. If there had been any additional requirements, such as integration with a larger suite of tools, I probably would have chosen Python with urllib2, argparse, etc. The implementation of retries, content checking, and argument handling would not have been substantially different.
+I decided to use Perl for this, simply because that is what I could do most quickly. If there had been any additional requirements, such as integration with a larger suite of tools, I probably would have chosen Python with urllib2, argparse, etc. The implementation of retries, content checking, and argument handling would not have been substantially different. Most people find Perl's POD off-putting (and so do I), but it can do some magical things, like making --help and the --man options work with minimal duplication of code, so for a quick-and-dirty CLI interface, GetOpt::Long and pod2usage are kind of a swiss army knife for me. You just have to overlook the ugliness of the markup ;)
 
 As I was thinking about how to tackle the problem, I decided to take the approach of supporting two polling modes: one whereby the content is simply downloaded and compared, and another where an HTTP HEAD request was issued, and the "Last-Modified" header was compared between runs. The thinking here was that for a simple index.html check, content mode is fine (i.e. not expensive), but if you want to start monitoring large binary objects or something, a lighter touch might be needed. Not every server/URI sends the Last-Modified response header though, so there is a warning message to the user when this is the case.
 
@@ -21,7 +21,7 @@ Some niceties of LWP are leveraged here, making HTTP request/response tracing (w
 
 # Usage #
 
-    test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] --url http://server.com/path/to/content [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
+    urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] --url http://server.com/path/to/content [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
 
 #### OPTIONS ####
        --url URL      Check this server URL for changes. This parameter is required.
@@ -42,7 +42,7 @@ Some niceties of LWP are leveraged here, making HTTP request/response tracing (w
 # Examples #
 
 ##### To monitor a page using "timestamp" mode: #####
-    $ ./test-urlmonitor.pl -v --interval 1 --retry 2 --url http://www.swimfrog.com/index.html
+    $ ./urlmonitor.pl -v --interval 1 --retry 2 --url http://www.swimfrog.com/index.html
     2015-12-02 04:18:48 INFO: Checking http://www.swimfrog.com/index.html for changes (#1)
     2015-12-02 04:18:48 INFO: Content md5sum is d41d8cd98f00b204e9800998ecf8427e
     2015-12-02 04:18:48 INFO: established baseline timestamp as Wed, 02 Dec 2015 04:18:45 GMT
@@ -55,10 +55,10 @@ Some niceties of LWP are leveraged here, making HTTP request/response tracing (w
     2015-12-02 04:18:52 INFO: Checking http://www.swimfrog.com/index.html for changes (#5)
     2015-12-02 04:18:52 INFO: Content md5sum is d41d8cd98f00b204e9800998ecf8427e
     2015-12-02 04:18:52 FATAL: Server content has changed (was Wed, 02 Dec 2015 04:18:45 GMT, now Wed, 02 Dec 2015 04:18:51 GMT)
-    FATAL: Server content has changed (was Wed, 02 Dec 2015 04:18:45 GMT, now Wed, 02 Dec 2015 04:18:51 GMT) at ./test-urlmonitor.pl line 94.
+    FATAL: Server content has changed (was Wed, 02 Dec 2015 04:18:45 GMT, now Wed, 02 Dec 2015 04:18:51 GMT) at ./urlmonitor.pl line 94.
 
 ##### To monitor a page in "content" mode: #####
-    $ ./test-urlmonitor.pl -v --mode=content --interval 1 --retry 2 --url http://www.oracle.com/index.html
+    $ ./urlmonitor.pl -v --mode=content --interval 1 --retry 2 --url http://www.oracle.com/index.html
     2015-12-02 04:20:51 INFO: Checking http://www.oracle.com/index.html for changes (#1)
     2015-12-02 04:20:51 INFO: Content md5sum is 68eaa3d843e512b79f88691c87692b34
     INFO: established baseline content as MD5: 68eaa3d843e512b79f88691c87692b34
@@ -69,11 +69,11 @@ Some niceties of LWP are leveraged here, making HTTP request/response tracing (w
     2015-12-02 04:20:54 INFO: Checking http://www.oracle.com/index.html for changes (#4)
     2015-12-02 04:20:54 INFO: Content md5sum is 0a7ceb3e46120c202e55edb02fd151d4
     2015-12-02 04:20:54 FATAL: Server content has changed (was 68eaa3d843e512b79f88691c87692b34, now 0a7ceb3e46120c202e55edb02fd151d4
-    FATAL: Server content has changed (was 68eaa3d843e512b79f88691c87692b34, now 0a7ceb3e46120c202e55edb02fd151d4 at ./test-urlmonitor.pl line 94.
+    FATAL: Server content has changed (was 68eaa3d843e512b79f88691c87692b34, now 0a7ceb3e46120c202e55edb02fd151d4 at ./urlmonitor.pl line 94.
     
 ##### If an error occurs, the program will try up to --retry consecutive tries to retrieve the content before giving up: #####
 
-    $ ./test-urlmonitor.pl -v --mode=content --interval 1 --retry 5 --url http://www.swimfrog.com/index.html
+    $ ./urlmonitor.pl -v --mode=content --interval 1 --retry 5 --url http://www.swimfrog.com/index.html
     2015-12-02 04:27:29 INFO: Checking http://www.swimfrog.com/index.html for changes (#1)
     2015-12-02 04:27:30 INFO: Content md5sum is fc14d5a30af5c76a846749dcab786b13
     INFO: established baseline content as MD5: fc14d5a30af5c76a846749dcab786b13
@@ -104,7 +104,7 @@ Some niceties of LWP are leveraged here, making HTTP request/response tracing (w
     2015-12-02 04:27:44 INFO: Checking http://www.swimfrog.com/index.html for changes (#14)
     2015-12-02 04:27:44 WARNING: Retrieving content from server failed: 500 Can't connect to www.swimfrog.com:80 (Connection refused)
     2015-12-02 04:27:44 FATAL: No successful response from server after 5 tries.
-    FATAL: No successful response from server after 5 tries. at ./test-urlmonitor.pl line 94.
+    FATAL: No successful response from server after 5 tries. at ./urlmonitor.pl line 94.
 
 
 # Limitations / Future improvements #

@@ -2,7 +2,7 @@
 
 =head1 NAME
 
-test-urlmonitor.pl - Monitors an individual web page for changes
+urlmonitor.pl - Monitors an individual web page for changes
 
 =head1 VERSION
 
@@ -14,7 +14,7 @@ my $VERSION = 0.01;
 
 =head1 SYNOPSIS
 
-test-urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] <--url http://server.com/path/to/content> [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
+urlmonitor.pl [--help|h] [--man] [--version|V] [--verbose|v] <--url http://server.com/path/to/content> [--mode MODE] [--interval INT] [--retry TIMES] [--output FILE] [--timeout TIME]
 
 =head1 OPTIONS
 
@@ -154,7 +154,7 @@ while (true) {
       # As long as there was no error, look for changes, then fill the bucket with the new content data and rinse/repeat.
       unless ($response->is_error()) {
          my $lm = $response->header("Last-Modified");
-         _log("error", "timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
+         _log("fatal", "timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
          
          _log("info", "established baseline timestamp as $lm") if ((! $bucket) && ($verbose));
    
