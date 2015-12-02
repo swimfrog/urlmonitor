@@ -66,12 +66,14 @@ use Getopt::Long; #--Perl core
 use Pod::Usage; #--Perl core
 use LWP::UserAgent; #--Perl core
 use Digest::MD5 qw (md5_hex); #--Perl core
+use POSIX qw(strftime); #--Perl core
 
 my $mode = "timestamp";
 my $retry = 3;
 my $timeout = 10;
 my $interval = 60;
 our $verbose = 0;
+my $outfile = "/dev/stdout";
 
 # Bugs/Near-term improvements
 #TODO: Replace STDOUT calls with variable output file handle
@@ -99,26 +101,42 @@ die("ERROR: Invalid --mode specified: $mode") unless ($mode =~ m/(?:content|time
 
 our $retry_counter=0; #global variable to track the number of times we have iterated through the retry loop.
 
+# Create/append an output file handle (or copy stdin)
+open(my $outfh, '>>', $outfile) or die("ERROR: Could not open logfile $outfile: $!");
+
+sub _log {
+   # Crappy logging function to avoid having to using a non-core logging module for my simple use case.
+   my $severity = shift @_;
+   my $message = shift @_;
+
+   my $ts = strftime '%Y-%m-%d %H:%M:%S ', gmtime();
+   print $outfh $ts.uc($severity).": $message\n";
+
+   if ($severity eq "fatal") {
+      die(uc($severity).": $message");
+   }
+}
+
 sub _handle_error {
    my $response = shift @_;
 
    # Allow the user to see the request and response data, if verbosity is high
-   print STDERR "DEBUG: HTTP Request".Dumper($response->request->as_string) if ($verbose > 2);
-   print STDERR "DEBUG: HTTP Response".Dumper($response->as_string) if ($verbose > 2);
+   _log("debug", "HTTP Request: ".$response->request->as_string) if ($verbose > 2);
+   _log("debug", "HTTP Response: ".$response->as_string) if ($verbose > 2);
 
    if ($response->is_error()) {
-       print STDERR "WARNING: Retrieving content from server failed: ".$response->status_line."\n";
+       _log("warning", "Retrieving content from server failed: ".$response->status_line);
 
        $retry_counter++;
 
        if ($retry_counter == $retry) {
            # If we have reached the retry limit, then bomb out:
-           die("ERROR: No successful response from server after $retry_counter tries.");
+           _log("fatal", "No successful response from server after $retry_counter tries.");
        }
 
        return;
    } else {
-       print STDERR "INFO: Content md5sum is ".md5_hex($response->content)."\n" if $verbose;
+       _log("info", "Content md5sum is ".md5_hex($response->content)) if $verbose;
 
        $retry_counter=0; #Reset the retry counter back to zero on success.
    }
@@ -126,7 +144,7 @@ sub _handle_error {
 
 # Instantiate the UserAgent
 my $browser = LWP::UserAgent->new();
-$browser->show_progress($verbose); # If verbose, show information about the request process.
+$browser->show_progress($verbose > 1 ? 1 : 0); # If verbose >=2, output information about the request process to STDERR.
 $browser->timeout($timeout); # Pass in the timeout value from the arguments.
 
 # Register a handler to check for errors and implement retry logic.
@@ -137,7 +155,7 @@ $browser->add_handler(
 our $bucket=""; #Just some bits (used to store previously-seen values)
 my $count=1;
 while (true) {
-   print STDOUT "INFO: Checking $url for changes (try #".$count.")\n" if $verbose;
+   _log("info", "Checking $url for changes (#".$count.")") if $verbose;
    
    ## Some testing code to make sure the retry logic is sound
    #if (int(rand(2))) { # Fail 50 percent of the time (random 0 or 1 evaluates to true or false)
@@ -153,12 +171,12 @@ while (true) {
 
       # Assuming there was no error, look for changes, then fill the bucket with the new content data and rinse/repeat.
       my $lm = $response->header("Last-Modified");
-      die("ERROR: timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
+      _log("error", "timestamp mode was specified, but server did not return a \"Last-Modified\" HTTP header. You should use content mode with this URL instead.") unless $lm;
       
-      print STDERR "INFO: established baseline timestamp as $lm\n" if ((! $bucket) && ($verbose));
+      _log("info", "established baseline timestamp as $lm") if ((! $bucket) && ($verbose));
 
       if ($bucket ne $lm ) {
-         die("WARNING: Server content has changed (was $bucket, now $lm)") if $bucket;
+         _log("fatal", "Server content has changed (was $bucket, now $lm)") if $bucket;
       }
 
       $bucket = $lm;
@@ -166,10 +184,10 @@ while (true) {
    } elsif ($mode eq "content") {
       $response = $browser->get($url);
 
-      print STDERR "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" if ((! $bucket) && ($verbose));
+      print $outfh "INFO: established baseline content as MD5: ".md5_hex($response->content)."\n" if ((! $bucket) && ($verbose));
 
       if ($bucket ne $response->content ) {
-         die("WARNING: Server content has changed (was ".md5_hex($bucket).", now ".md5_hex($response->content)) if $bucket;
+         _log("fatal", "Server content has changed (was ".md5_hex($bucket).", now ".md5_hex($response->content)) if $bucket;
       }
 
       $bucket = $response->content;
